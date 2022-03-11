@@ -1,0 +1,146 @@
+package me.vzhilin.bstreamer;
+
+import me.vzhilin.bstreamer.server.RtspServer;
+import me.vzhilin.bstreamer.server.ServerContext;
+import me.vzhilin.bstreamer.server.ServerReporter;
+import me.vzhilin.bstreamer.server.conf.Config;
+import me.vzhilin.bstreamer.server.conf.NetworkAttributes;
+import me.vzhilin.bstreamer.server.stat.ServerStatistics;
+import me.vzhilin.bstreamer.util.ConfigLocator;
+import me.vzhilin.bstreamer.util.PropertyMap;
+import org.apache.commons.cli.*;
+import org.apache.log4j.BasicConfigurator;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+//ini file library
+
+
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+
+//import com.fasterxml.jackson.databind.ObjectMapper;
+//import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+
+public class ServerCLI {
+    private final CommandLine cmd;
+    private final Options options;
+
+    public static void main(String... argv) throws IOException, ParseException {
+        BasicConfigurator.configure();
+        ServerCLI mediaserver = new ServerCLI(argv);
+        mediaserver.start();
+    }
+
+    private ServerCLI(String[] argv) throws ParseException {
+        options = new Options();
+        options.addOption("h", "help", false, "show help and exit");
+        options.addOption("c", "config", true, "config file");
+        options.addOption("l", "loglevel", true, "log level [OFF|FATAL|ERROR|WARN|INFO|DEBUG|TRACE|ALL]");
+       // options.addOption("p","ip/port",true,"start ip and port");
+        CommandLineParser parser = new DefaultParser();
+        cmd = parser.parse(options, argv);
+    }
+
+//    public class UserInfo{
+//        public UserInfo(String name,int Portsoff){
+//            this.name = name;
+//            this.Portsoff = Portsoff;
+//        }
+//        public UserInfo(){} //default constructor
+//
+//    }
+//
+//    public class YamlRead{
+//        public void main(String[] args) throws IOException {
+//            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+//         File file = new File(classLoader.getResource("server.yaml").getFile());
+//         ObjectMapper om = new ObjectMapper(new YAMLFactory());
+//         UserInfo userInfo = om.readValue(file,UserInfo.class);
+//
+//
+//
+//        }
+//
+
+    private void start() throws IOException {
+        //int newPort = 0;
+        Properties p = new Properties();
+        p.load(new FileInputStream("C:\\Users\\H496407\\IdeaProjects\\bstreamer\\target\\appassembler\\conf\\multi.ini"));
+        int noofCameras = Integer.parseInt(p.getProperty("number"));
+
+
+//        if (cmd.hasOption('p')) {
+//            Scanner sc = new Scanner(System.in);
+//            System.out.println("Starting Port:");
+//            newPort = sc.nextInt();
+//        }
+
+        if (cmd.hasOption("help")) {
+            HelpFormatter helpFormatter = new HelpFormatter();
+            helpFormatter.printHelp("bserver [options]", options);
+        } else {
+            if (cmd.hasOption('l')) {
+                String loglevel = cmd.getOptionValue('l');
+                Logger.getRootLogger().setLevel(Level.toLevel(loglevel));
+            } else {
+                Logger.getRootLogger().setLevel(Level.INFO);
+            }
+            Optional<File> configPath = new ConfigLocator("server.yaml").locate(cmd.getOptionValue("config"));
+            if (!configPath.isPresent()) {
+                System.exit(1);
+            }
+            InputStream is = new FileInputStream(configPath.get());
+            PropertyMap yaml = PropertyMap.parseYaml(is);
+            Config config = new Config(yaml);
+
+            PropertyMap network = config.getNetwork();
+            List<String> lst = network.getStringArray(NetworkAttributes.BIND);
+            String strBind = lst.get(0);
+            String[] strBindArr = strBind.split(":");
+            String IP = strBindArr[0];
+            int port = Integer.parseInt(strBindArr[1]);
+
+//            int i;
+//            do {
+//                i = port;
+//                System.out.println(IP);
+//                String newBind = IP + ":" + i;
+//                System.out.println("new bind - " + newBind);
+//                lst.set(0, newBind);
+//                System.out.println("Server started with " + i);
+//                RtspServer server = new RtspServer(config);
+//                startConsoleReporter(server);
+//                server.start();
+//                System.out.println(" " + i);
+//                i++;
+//
+//            } while (i <= port + noofCameras);
+            for (int i = port; i <= port + noofCameras; i++)
+            {
+
+                System.out.println(IP);
+                String newBind = IP + ":" + i;
+                System.out.println("new bind - " + newBind);
+                lst.set(0, newBind);
+                System.out.println("Server started with " + i);
+                RtspServer server = new RtspServer(config);
+                startConsoleReporter(server);
+                server.start();
+                System.out.println(" " + i);
+            }
+        }
+
+        }
+        private void startConsoleReporter(RtspServer server) {
+        ServerContext sc = server.getServerContext();
+        ServerStatistics stat = sc.getStat();
+        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();
+        new ServerReporter(stat, exec).start();
+    }
+}
